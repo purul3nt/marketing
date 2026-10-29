@@ -1,0 +1,7 @@
+node_modules/
+# Cut clips and footage frames (rebuilt by prep.mjs and the footage trims).
+build/
+ref/
+# Recordings, frames, stills and browser profiles. Only the finished trailer is kept.
+out/*
+!out/llamaplay-trailer.mp4
