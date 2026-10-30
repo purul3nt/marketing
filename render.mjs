@@ -1,21 +1,20 @@
 // Renders trailer.html frame by frame in headless Edge, then mixes the audio.
-//   node render.mjs                 full 20 s video -> out/llamaplay-trailer.mp4
+//   node render.mjs                 full video -> out/llamaplay-trailer.mp4
 //   node render.mjs 2.6 9.4 14.8    stills of those seconds -> out/stills/
 import http from "node:http";
 import { createReadStream, existsSync, mkdirSync, rmSync, statSync } from "node:fs";
 import { extname, join, normalize } from "node:path";
 import { execFileSync } from "node:child_process";
 import puppeteer from "puppeteer-core";
+import { DURATION, FPS } from "./edit.mjs";
 
 const ROOT = "C:/Users/hanna/Documents/GitHub";
 const HERE = join(ROOT, "llamaplay-trailer");
 const OUT = join(HERE, "out");
 const FF = "C:/Program Files/Live2D Cubism 5.3/tools/ffmpeg/ffmpeg.exe";
 const BROWSER = "C:/Program Files/Google/Chrome/Application/chrome.exe";
-const FPS = 30;
-const DURATION = 20;
 
-const TYPES = { ".html": "text/html", ".js": "text/javascript", ".json": "application/json", ".png": "image/png", ".webp": "image/webp", ".jpg": "image/jpeg", ".otf": "font/otf", ".woff2": "font/woff2", ".ttf": "font/ttf" };
+const TYPES = { ".html": "text/html", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".png": "image/png", ".webp": "image/webp", ".jpg": "image/jpeg", ".otf": "font/otf", ".woff2": "font/woff2", ".ttf": "font/ttf" };
 const server = http.createServer((req, res) => {
   const path = normalize(join(ROOT, decodeURIComponent(new URL(req.url, "http://x").pathname)));
   if (!path.startsWith(normalize(ROOT)) || !existsSync(path) || !statSync(path).isFile()) {

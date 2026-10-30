@@ -1,8 +1,9 @@
 // Cuts the packed colour+mask videos from both games into RGBA PNG frames
-// the trailer page can draw directly. Run once: node prep.mjs
+// the trailer page can draw directly, and the footage runs. node prep.mjs
 import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, existsSync } from "node:fs";
+import { mkdirSync, readFileSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { RUNS } from "./edit.mjs";
 
 const FF = "C:/Program Files/Live2D Cubism 5.3/tools/ffmpeg/ffmpeg.exe";
 const GH = "C:/Users/hanna/Documents/GitHub";
@@ -46,3 +47,16 @@ const HADES = { cx: 0, cy: 0, w: 1824, h: 1152, mx: 1824, my: 0, scale: 0.6 };
 cut(hades, join(OUT, "hades/idle"), { ...HADES, first: 0, count: 118 });
 cut(hades, join(OUT, "hades/fist"), { ...HADES, first: 118, count: 118 });
 cut(hades, join(OUT, "hades/orb"), { ...HADES, first: 236, count: 118 });
+
+// Footage: each run in edit.mjs as numbered JPEGs, frame i at the take's
+// second src + i / 30. Cut fresh each time, as the picks change more often
+// than the clips above.
+const HERE = join(GH, "llamaplay-trailer");
+for (const { name, take, src, at, until } of RUNS) {
+  const out = join(OUT, name);
+  rmSync(out, { recursive: true, force: true });
+  mkdirSync(out, { recursive: true });
+  execFileSync(FF, ["-v", "error", "-y", "-ss", String(src), "-i", join(HERE, take, "footage.mp4"), "-t", String(until - at + 0.1),
+    "-q:v", "2", "-start_number", "0", join(out, "%04d.jpg")]);
+  console.log("cut", out);
+}

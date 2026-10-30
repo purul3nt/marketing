@@ -1,7 +1,8 @@
-// Llamaplay 20 s trailer: House of Hades free spins, Hades' swarm transition,
-// a Vinci's Vices base spin (both real footage), Llamaplay logo. Every frame is a pure function
-// of t (seconds), so render.mjs can step it frame by frame.
-"use strict";
+// Llamaplay 30 s trailer: a Vinci's Vices base spin, Hades' swarm transition,
+// House of Hades free spins (both real footage, cut as edit.mjs lists),
+// Llamaplay logo. Every frame is a pure function of t (seconds), so
+// render.mjs can step it frame by frame.
+import { FPS, RUNS, T, dissolveFrom } from "./edit.mjs";
 
 const W = 1920;
 const H = 1080;
@@ -10,16 +11,6 @@ const ctx = cv.getContext("2d");
 const VV = "/vincisvices/assets/";
 const B = "/llamaplay-trailer/build/";
 const DL = "/llamaplay-trailer/media/";
-
-// --- timeline (seconds) --------------------------------------------------------
-// House of Hades first, then Vinci's Vices. Vinci times inside drawVinci are
-// from the swap.
-const T = {
-  swarm: 8.4, swap: 9.1,
-  smash: 1.7, dance: 4.5,
-  vvEnd: 17.1,
-  outro: 17.3, end: 20,
-};
 
 // --- helpers -------------------------------------------------------------------
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
@@ -73,29 +64,59 @@ function shade(alpha, color = "0,0,0") {
   ctx.fillRect(0, 0, W, H);
 }
 
-// --- Vinci's Vices: real footage ---------------------------------------------------------
-// Recorded from the game itself (record.mjs, a 2,523x base spin) and cut to
-// three beats: a wheel smashing the left window, the multiplied wins, the
-// Epic Win.
-const VV_FRAMES = 246;
-// The take has Leonardo hidden (the game's video snaps him to his still
-// whenever it seeks between clips), and his real clips play where the game
-// stands him: idle, the broken-window reaction (leonardo_win_8c) from the
-// smash, then his dance (leonardo_win_9) through the Epic Win, which the base
-// game does not give him.
+// --- footage: the runs in edit.mjs, each dissolving into the next ---------------------
+const runFrame = (run, t) => `${B}${run.name}/${String(Math.max(0, Math.floor((t - run.at) * FPS))).padStart(4, "0")}.jpg`;
+function drawFootage(t, game) {
+  for (const run of RUNS) {
+    if (run.game !== game || t < run.at || t >= run.until) continue;
+    const from = dissolveFrom(run);
+    const k = from ? smooth(seg(t, run.at, from.until)) : 1;
+    draw(img(runFrame(run, t)), 0, 0, W, H, k);
+    // A soft bloom through the dissolve's middle hides the change of shot.
+    if (k < 1) {
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      shade(0.22 * Math.sin(Math.PI * k), "255,240,220");
+      ctx.restore();
+    }
+  }
+}
+
+// --- Vinci's Vices -------------------------------------------------------------------------
+// The take has Leonardo hidden: the game's video jumps him to his standing
+// pose whenever a reaction cuts into his idle. Here his real clips play where
+// the game stands him, and as each clip begins and ends on that pose he only
+// changes clip at a clip's end: the idle is phased to finish on the smash,
+// the broken-window reaction (leonardo_win_8c) plays whole, then his dance
+// (leonardo_win_9) loops through the Epic Win. A three-frame blend covers
+// what the generated clips differ by at the joins.
 const PLATE_K = W / 1536;
 const LEO_K = (748 * 0.838 * PLATE_K) / 960;
 const LEO = { w: 588 * LEO_K, h: 960 * LEO_K, feetX: (224 / 458) * 588 * LEO_K, feetY: (730 / 748) * 960 * LEO_K, x: 183 * PLATE_K, y: 770 * PLATE_K };
+const LEO_CLIPS = { idle: 112, window: 124, dance: 124 };
+const LEO_PLAN = [["idle", T.smash - 112 / 24], ["window", T.smash], ["dance", T.smash + 124 / 24]];
+const LEO_BLEND = 3 / 24;
+function leoFrame(k, t) {
+  const [dir, at] = LEO_PLAN[k];
+  const n = LEO_CLIPS[dir];
+  const i = Math.floor((t - at) * 24);
+  return frame(`leo/${dir}`, ((i % n) + n) % n);
+}
+function drawLeo(t) {
+  let k = LEO_PLAN.length - 1;
+  while (k > 0 && t < LEO_PLAN[k][1]) k--;
+  const box = [LEO.x - LEO.feetX, LEO.y - LEO.feetY, LEO.w, LEO.h];
+  const since = t - LEO_PLAN[k][1];
+  if (k > 0 && since < LEO_BLEND) {
+    const [dir] = LEO_PLAN[k - 1];
+    draw(img(frame(`leo/${dir}`, LEO_CLIPS[dir] - 1)), ...box);
+    draw(img(leoFrame(k, t)), ...box, since / LEO_BLEND);
+  } else draw(img(leoFrame(k, t)), ...box);
+}
 
 function drawVinci(t) {
-  const r = t - T.swap;
-  const i = Math.min(VV_FRAMES - 1, Math.floor(r * 30));
-  draw(img(`${B}vv-footage/${String(i).padStart(4, "0")}.jpg`), 0, 0, W, H);
-  const leo = r < T.smash ? clipAt("leo/idle", 112, r, true)
-    : r < T.dance ? clipAt("leo/window", 124, r - T.smash)
-      : clipAt("leo/dance", 124, r - T.dance, true);
-  draw(img(leo), LEO.x - LEO.feetX, LEO.y - LEO.feetY, LEO.w, LEO.h);
-  shade(seg(t, T.vvEnd, T.outro));
+  drawFootage(t, "vincisvices");
+  drawLeo(t);
 }
 
 // --- Hades' swarm transition (houseofhades/src/game/swarmTransition.ts) -------------
@@ -203,15 +224,10 @@ const SW = (() => {
   };
 })();
 
-// --- House of Hades free spins: real footage ------------------------------------------
-// Recorded from the game itself (record.mjs, a Mega Free Spins buy) and cut to
-// four beats: devil squad, skeleton fights, ghoul clones, the Mega Win.
-const HOH_FRAMES = 273;
-
+// --- House of Hades ------------------------------------------------------------------------
 function drawHades(t) {
-  const i = Math.min(HOH_FRAMES - 1, Math.floor(t * 30));
-  draw(img(`${B}hoh-footage/${String(i).padStart(4, "0")}.jpg`), 0, 0, W, H);
-  shade(1 - seg(t, 0, 0.3));
+  drawFootage(t, "houseofhades");
+  shade(seg(t, T.outro - 0.2, T.outro));
 }
 
 // --- the Llamaplay outro -----------------------------------------------------------------
@@ -249,8 +265,8 @@ function drawFrame(t) {
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.globalAlpha = 1;
   ctx.globalCompositeOperation = "source-over";
-  if (t < T.swap) drawHades(t);
-  else if (t < T.outro) drawVinci(t);
+  if (t < T.swap) drawVinci(t);
+  else if (t < T.outro) drawHades(t);
   else drawOutro(t);
   SW(t - T.swarm);
 }
